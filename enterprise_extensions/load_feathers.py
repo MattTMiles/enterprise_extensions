@@ -21,7 +21,7 @@ def load_feathers_from_folder(folder, time_span_cut_yr=None, pulsar_name_list=No
     if not os.listdir(folder):
         raise ValueError(f"Folder {folder} is empty.")
     # Make list of feather files
-    feather_files = glob.glob(os.path.join(folder, '*.feather'))
+    feather_files = sorted(glob.glob(os.path.join(folder, '*.feather')))
     # make list of pulsars to be returned
     pulsars = []
     # Loop through each feather file and create a Pulsar object

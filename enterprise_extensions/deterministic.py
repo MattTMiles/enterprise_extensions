@@ -75,6 +75,7 @@ def cw_block_circ(
     log10_fgw=None,
     psrTerm=False,
     tref=0,
+    discoclone=True,
     name="cw",
 ):
     """
@@ -111,6 +112,7 @@ def cw_block_circ(
             log10_h = parameter.LinearExp(-18.0, -11.0)("{}_log10_h".format(name))
         elif amp_prior == "log-uniform":
             log10_h = parameter.Uniform(-18.0, -11.0)("{}_log10_h".format(name))
+            log10_h0 = parameter.Uniform(-18.0, -11.0)("{}_log10_h0".format(name))
 
     elif dist_prior == "log-uniform":
         log10_dist = parameter.Uniform(-2.0, 4.0)("{}_log10_dL".format(name))
@@ -119,9 +121,20 @@ def cw_block_circ(
     # chirp mass [Msol]
     log10_Mc = parameter.Uniform(6.0, 10.0)("{}_log10_Mc".format(name))
 
+    # cw_ra
+    ra = parameter.Uniform(0.0, 2.0 * np.pi)("{}_ra".format(name))
+    # cw_dec
+    sindec = parameter.Uniform(-1.0, 1.0)("{}_sindec".format(name))
+
+    # Earth-term phase
+    phi_earth = parameter.Uniform(0.0, 2.0 * np.pi)("{}_phi_earth".format(name))
+
+
+
     # GW frequency [Hz]
     if log10_fgw is None:
         log10_fgw = parameter.Uniform(-9.0, -7.0)("{}_log10_fgw".format(name))
+        log10_f0 = parameter.Uniform(-9.0, -7.0)("{}_log10_f0".format(name))
     else:
         log10_fgw = parameter.Constant(log10_fgw)("{}_log10_fgw".format(name))
     # orbital inclination angle [radians]
@@ -146,29 +159,43 @@ def cw_block_circ(
     if psrTerm:
         # orbital phase
         p_phase = parameter.Uniform(0, np.pi)
-        p_dist = parameter.Normal(0, 1)
+        #p_dist = parameter.Normal(0, 1)
+        p_dist = parameter.Uniform(0.1, 10)
     else:
         p_phase = None
         p_dist = 0
-
-    # continuous wave signal
-    wf = cw_delay(
-        cos_gwtheta=costh,
-        gwphi=phi,
-        cos_inc=cosinc,
-        log10_mc=log10_Mc,
-        log10_fgw=log10_fgw,
-        log10_h=log10_h,
-        log10_dist=log10_dist,
-        phase0=phase0,
-        psi=psi,
-        psrTerm=True,
-        p_dist=p_dist,
-        p_phase=p_phase,
-        phase_approx=True,
-        check=False,
-        tref=tref,
-    )
+    
+    if discoclone:
+        wf = cw_delay_disco_clone(
+            log10_h0=log10_h0,
+            log10_f0=log10_f0,
+            ra=ra,
+            sindec=sindec,
+            cosinc=cosinc,
+            psi=psi,
+            phi_earth=phi_earth,
+            p_dist=p_dist,
+            pulsarterm=True,
+        )
+    else:
+        # continuous wave signal
+        wf = cw_delay(
+            cos_gwtheta=costh,
+            gwphi=phi,
+            cos_inc=cosinc,
+            log10_mc=log10_Mc,
+            log10_fgw=log10_fgw,
+            log10_h=log10_h,
+            log10_dist=log10_dist,
+            phase0=phase0,
+            psi=psi,
+            psrTerm=True,
+            p_dist=p_dist,
+            p_phase=p_phase,
+            phase_approx=True,
+            check=False,
+            tref=tref,
+        )
     cw = CWSignal(wf, ecc=False, psrTerm=psrTerm)
 
     return cw
@@ -482,6 +509,90 @@ def cw_delay(
         res = fplus * (rplus_p - rplus) + fcross * (rcross_p - rcross)
     else:
         res = -fplus * rplus - fcross * rcross
+
+    return res
+
+
+def fpc_fast(pos, gwtheta, gwphi):
+    x, y, z = pos
+
+    sin_phi = np.sin(gwphi)
+    cos_phi = np.cos(gwphi)
+    sin_theta = np.sin(gwtheta)
+    cos_theta = np.cos(gwtheta)
+
+    m_dot_pos = sin_phi * x - cos_phi * y
+    n_dot_pos = -cos_theta * cos_phi * x - cos_theta * sin_phi * y + sin_theta * z
+    omhat_dot_pos = -sin_theta * cos_phi * x - sin_theta * sin_phi * y - cos_theta * z
+
+    denom = 1.0 + omhat_dot_pos
+
+    fplus = 0.5 * (m_dot_pos**2 - n_dot_pos**2) / denom
+    fcross = (m_dot_pos * n_dot_pos) / denom
+
+    return fplus, fcross
+
+@signal_base.function
+def cw_delay_disco_clone(
+    toas,
+    pos,
+    log10_h0,
+    log10_f0, 
+    ra, 
+    sindec, 
+    cosinc, 
+    psi, 
+    phi_earth, 
+    p_dist,
+    pulsarterm=True,
+):
+    h0 = 10**log10_h0
+    f0 = 10**log10_f0
+
+    dec, inc = np.arcsin(sindec), np.arccos(cosinc)
+    fplus, fcross = fpc_fast(pos, 0.5 * np.pi - dec, ra)
+
+    c = 2.99792458e8 
+    omega_hat = np.array([ -np.cos(dec) * np.cos(ra), 
+                            -np.cos(dec) * np.sin(ra),
+                            -np.sin(dec)
+                            ])
+
+    # Convert pulsar distance from kpc to meters to match c [m/s]
+    p_dist_m = p_dist * 3.0856775814913673e19  # 1 kpc in meters
+    phi_psr = (p_dist_m / c) * 2.0 * np.pi * f0  * (1.0 + np.dot(omega_hat, pos))
+
+    if pulsarterm:
+        phi_avg = 0.5 * (phi_earth + phi_psr)
+    else:
+        phi_avg = phi_earth
+
+    tref = 86400.0 * 51544.5  # MJD J2000 in seconds
+
+    phase = phi_avg + 2.0 * np.pi * f0 * (toas - tref)
+    cphase, sphase = np.cos(phase), np.sin(phase)
+
+    if pulsarterm:
+        phi_diff = 0.5 * (phi_earth - phi_psr)
+        sin_diff = np.sin(phi_diff)
+
+        delta_sin =  2.0 * cphase * sin_diff
+        delta_cos = -2.0 * sphase * sin_diff
+    else:
+        delta_sin = sphase
+        delta_cos = cphase
+
+    At = -1.0 * (1.0 + np.cos(inc)**2) * delta_sin
+    Bt =  2.0 * np.cos(inc) * delta_cos
+
+    alpha = h0 / (2 * np.pi * f0)
+
+    # calculate rplus and rcross
+    rplus  = alpha * (-At * np.cos(2 * psi) + Bt * np.sin(2 * psi))
+    rcross = alpha * ( At * np.sin(2 * psi) + Bt * np.cos(2 * psi))
+
+    # calculate residuals
+    res = -fplus * rplus - fcross * rcross
 
     return res
 
