@@ -75,7 +75,8 @@ def cw_block_circ(
     log10_fgw=None,
     psrTerm=False,
     tref=0,
-    discoclone=True,
+    phase_connected=False,
+    discoclone=False,
     name="cw",
 ):
     """
@@ -111,15 +112,15 @@ def cw_block_circ(
         if amp_prior == "uniform":
             log10_h = parameter.LinearExp(-18.0, -11.0)("{}_log10_h".format(name))
         elif amp_prior == "log-uniform":
+            #log10_h = parameter.Uniform(-18.0, -11.0)("{}_log10_h".format(name))
             log10_h = parameter.Uniform(-18.0, -11.0)("{}_log10_h".format(name))
-            log10_h0 = parameter.Uniform(-18.0, -11.0)("{}_log10_h0".format(name))
 
     elif dist_prior == "log-uniform":
         log10_dist = parameter.Uniform(-2.0, 4.0)("{}_log10_dL".format(name))
         log10_h = None
 
     # chirp mass [Msol]
-    log10_Mc = parameter.Uniform(6.0, 10.0)("{}_log10_Mc".format(name))
+    log10_Mc = parameter.Uniform(6.0, 10.0)("{}_log10_mc".format(name))
 
     # cw_ra
     ra = parameter.Uniform(0.0, 2.0 * np.pi)("{}_ra".format(name))
@@ -138,7 +139,7 @@ def cw_block_circ(
     else:
         log10_fgw = parameter.Constant(log10_fgw)("{}_log10_fgw".format(name))
     # orbital inclination angle [radians]
-    cosinc = parameter.Uniform(-1.0, 1.0)("{}_cosinc".format(name))
+    cos_inc = parameter.Uniform(-1.0, 1.0)("{}_cos_inc".format(name))
     # initial GW phase [radians]
     phase0 = parameter.Uniform(0.0, 2 * np.pi)("{}_phase0".format(name))
 
@@ -147,14 +148,14 @@ def cw_block_circ(
     psi = parameter.Uniform(0, np.pi)(psi_name)
 
     # sky location
-    costh_name = "{}_costheta".format(name)
-    phi_name = "{}_phi".format(name)
+    costh_name = f"{name}_cos_gwtheta"
+    phi_name = f"{name}_gwphi"
     if skyloc is None:
-        costh = parameter.Uniform(-1, 1)(costh_name)
-        phi = parameter.Uniform(0, 2 * np.pi)(phi_name)
+        cos_gwtheta = parameter.Uniform(-1, 1)(costh_name)
+        gwphi = parameter.Uniform(0, 2 * np.pi)(phi_name)
     else:
-        costh = parameter.Constant(skyloc[0])(costh_name)
-        phi = parameter.Constant(skyloc[1])(phi_name)
+        cos_gwtheta = parameter.Constant(skyloc[0])(costh_name)
+        gwphi = parameter.Constant(skyloc[1])(phi_name)
 
     if psrTerm:
         # orbital phase
@@ -167,22 +168,37 @@ def cw_block_circ(
     
     if discoclone:
         wf = cw_delay_disco_clone(
-            log10_h0=log10_h0,
+            log10_h=log10_h,
             log10_f0=log10_f0,
             ra=ra,
             sindec=sindec,
-            cosinc=cosinc,
+            cos_inc=cos_inc,
             psi=psi,
             phi_earth=phi_earth,
             p_dist=p_dist,
-            pulsarterm=True,
+            pulsarterm=psrTerm,
+        )
+    elif phase_connected:
+        wf = cw_delay_phase_connected_binary(
+            cos_gwtheta=cos_gwtheta,
+            gwphi=gwphi,
+            cos_inc=cos_inc,
+            log10_mc=log10_Mc,
+            log10_fgw=log10_fgw,
+            log10_h=log10_h,
+            log10_dist=log10_dist,
+            phase0=phase0,
+            psi=psi,
+            p_dist=p_dist,
+            psr_term=psrTerm,
+            p_phase=p_phase,
         )
     else:
         # continuous wave signal
         wf = cw_delay(
-            cos_gwtheta=costh,
-            gwphi=phi,
-            cos_inc=cosinc,
+            cos_gwtheta=cos_gwtheta,
+            gwphi=gwphi,
+            cos_inc=cos_inc,
             log10_mc=log10_Mc,
             log10_fgw=log10_fgw,
             log10_h=log10_h,
@@ -248,7 +264,7 @@ def cw_block_ecc(
     else:
         log10_Forb = parameter.Constant(log10_F)("{}_log10_Forb".format(name))
     # orbital inclination angle [radians]
-    cosinc = parameter.Uniform(-1.0, 1.0)("{}_cosinc".format(name))
+    cosinc = parameter.Uniform(-1.0, 1.0)("{}_cos_inc".format(name))
     # periapsis position angle [radians]
     gamma_0 = parameter.Uniform(0.0, np.pi)("{}_gamma0".format(name))
 
@@ -268,7 +284,7 @@ def cw_block_ecc(
     pol = parameter.Uniform(0, np.pi)(pol_name)
 
     # sky location
-    costh_name = "{}_costheta".format(name)
+    costh_name = "{}_cos_gwtheta".format(name)
     phi_name = "{}_phi".format(name)
     if skyloc is None:
         costh = parameter.Uniform(-1, 1)(costh_name)
@@ -536,20 +552,20 @@ def fpc_fast(pos, gwtheta, gwphi):
 def cw_delay_disco_clone(
     toas,
     pos,
-    log10_h0,
+    log10_h,
     log10_f0, 
     ra, 
     sindec, 
-    cosinc, 
+    cos_inc, 
     psi, 
     phi_earth, 
     p_dist,
     pulsarterm=True,
 ):
-    h0 = 10**log10_h0
+    h0 = 10**log10_h
     f0 = 10**log10_f0
 
-    dec, inc = np.arcsin(sindec), np.arccos(cosinc)
+    dec, inc = np.arcsin(sindec), np.arccos(cos_inc)
     fplus, fcross = fpc_fast(pos, 0.5 * np.pi - dec, ra)
 
     c = 2.99792458e8 
@@ -595,6 +611,85 @@ def cw_delay_disco_clone(
     res = -fplus * rplus - fcross * rcross
 
     return res
+
+@signal_base.function
+def cw_delay_phase_connected_binary(
+    toas,
+    pos,
+    cos_gwtheta,
+    gwphi,
+    cos_inc,
+    log10_mc,
+    log10_fgw,
+    log10_h,
+    phase0,
+    psi,
+    p_dist,
+    psr_term=False,
+    evolve=True,
+    log10_dist=None,
+    p_phase=None,
+):
+    toas = np.asarray(toas)
+    pos = np.asarray(pos)
+
+    mc = (10.0 ** log10_mc) * const.Tsun
+    w0 = np.pi * (10.0 ** log10_fgw)
+    gwtheta = np.arccos(cos_gwtheta)
+    inc = np.arccos(cos_inc)
+    phase0_orb = 0.5 * phase0  # convert GW phase to orbital phase
+
+    if (log10_h is None) == (log10_dist is None):
+        raise ValueError("Provide exactly one of log10_dist or log10_h")
+    if log10_h is None:
+        dist = (10.0 ** log10_dist) * const.Mpc / const.c
+    else:
+        dist = 2.0 * mc ** (5.0 / 3.0) * w0 ** (2.0 / 3.0) / (10.0 ** log10_h)
+
+    fplus, fcross, cos_mu = utils.create_gw_antenna_pattern(pos, gwtheta, gwphi)
+    tref = 86400.0 * 51544.5  # MJD J2000 in seconds
+    toas_rel = toas - tref
+    parallax_coeff = const.kpc / const.c * p_dist
+    tp = toas_rel - parallax_coeff * (1.0 - cos_mu)
+    if not psr_term:
+        tp = toas_rel
+
+    def evolve_phase(t, p_phase):
+        term = 1.0 - (256.0 / 5.0) * mc ** (5.0 / 3.0) * w0 ** (8.0 / 3.0) * t
+        omega = w0 * np.power(term, -3.0 / 8.0)
+        if p_phase is None:
+            phase = phase0_orb + (1.0 / (32.0 * mc ** (5.0 / 3.0))) * (
+                w0 ** (-5.0 / 3.0) - omega ** (-5.0 / 3.0)
+            )
+        else:
+            phase = phase0_orb + p_phase + (1.0 / (32.0 * mc ** (5.0 / 3.0))) * (
+                w0 ** (-5.0 / 3.0) - omega ** (-5.0 / 3.0)
+            )
+        return omega, phase
+
+    omega, phase = evolve_phase(toas_rel, p_phase=None)
+    if evolve:
+        omega_p, phase_p = evolve_phase(tp, p_phase)
+    else:
+        omega_p, phase_p = w0, w0 * tp + phase0_orb
+       #phase = w0 * toas_rel + phase0_orb
+
+    At = -0.5 * np.sin(2.0 * phase) * (3.0 + np.cos(2.0 * inc))
+    Bt = 2.0 * np.cos(2.0 * phase) * np.cos(inc)
+    At_p = -0.5 * np.sin(2.0 * phase_p) * (3.0 + np.cos(2.0 * inc))
+    Bt_p = 2.0 * np.cos(2.0 * phase_p) * np.cos(inc)
+
+    alpha = mc ** (5.0 / 3.0) / (dist * omega ** (1.0 / 3.0))
+    alpha_p = mc ** (5.0 / 3.0) / (dist * omega_p ** (1.0 / 3.0))
+
+    rplus = alpha * (-At * np.cos(2.0 * psi) + Bt * np.sin(2.0 * psi))
+    rcross = alpha * (At * np.sin(2.0 * psi) + Bt * np.cos(2.0 * psi))
+    rplus_p = alpha_p * (-At_p * np.cos(2.0 * psi) + Bt_p * np.sin(2.0 * psi))
+    rcross_p = alpha_p * (At_p * np.sin(2.0 * psi) + Bt_p * np.cos(2.0 * psi))
+
+    if psr_term:
+        return fplus * (rplus_p - rplus) + fcross * (rcross_p - rcross)
+    return -fplus * rplus - fcross * rcross
 
 
 @signal_base.function
