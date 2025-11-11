@@ -191,7 +191,8 @@ def cw_block_circ(
             psi=psi,
             p_dist=p_dist,
             psr_term=psrTerm,
-            p_phase=p_phase,
+            evolve=True,
+            p_phase=p_phase if not phase_connected else None,
         )
     else:
         # continuous wave signal
@@ -632,6 +633,7 @@ def cw_delay_phase_connected_binary(
 ):
     toas = np.asarray(toas)
     pos = np.asarray(pos)
+    
 
     mc = (10.0 ** log10_mc) * const.Tsun
     w0 = np.pi * (10.0 ** log10_fgw)
