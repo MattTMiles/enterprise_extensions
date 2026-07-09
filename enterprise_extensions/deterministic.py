@@ -78,6 +78,7 @@ def cw_block_circ(
     phase_connected=False,
     discoclone=False,
     name="cw",
+    evolve=False,
 ):
     """
     Returns deterministic, cirular orbit continuous GW model:
@@ -191,7 +192,7 @@ def cw_block_circ(
             psi=psi,
             p_dist=p_dist,
             psr_term=psrTerm,
-            evolve=True,
+            evolve=evolve,
             p_phase=p_phase if not phase_connected else None,
         )
     else:
@@ -675,6 +676,9 @@ def cw_delay_phase_connected_binary(
     else:
         omega_p, phase_p = w0, w0 * tp + phase0_orb
        #phase = w0 * toas_rel + phase0_orb
+
+    omega, phase = evolve_phase(toas_rel, p_phase=None) if evolve else (w0, w0 * toas_rel + phase0_orb)
+    omega_p, phase_p = evolve_phase(tp, p_phase) if evolve else (w0, w0 * tp + phase0_orb)
 
     At = -0.5 * np.sin(2.0 * phase) * (3.0 + np.cos(2.0 * inc))
     Bt = 2.0 * np.cos(2.0 * phase) * np.cos(inc)
