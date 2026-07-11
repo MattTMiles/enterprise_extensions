@@ -78,7 +78,7 @@ def cw_block_circ(
     phase_connected=False,
     discoclone=False,
     name="cw",
-    evolve=False,
+    evolve=True,
 ):
     """
     Returns deterministic, cirular orbit continuous GW model:
@@ -670,13 +670,9 @@ def cw_delay_phase_connected_binary(
             )
         return omega, phase
 
-    omega, phase = evolve_phase(toas_rel, p_phase=None)
-    if evolve:
-        omega_p, phase_p = evolve_phase(tp, p_phase)
-    else:
-        omega_p, phase_p = w0, w0 * tp + phase0_orb
-       #phase = w0 * toas_rel + phase0_orb
-
+    # single code path: Earth and pulsar terms both honour `evolve` (chirp on when True,
+    # constant-frequency when False). Previously a first unconditional block computed these and
+    # was then silently overwritten by this conditional one; the shadow is removed.
     omega, phase = evolve_phase(toas_rel, p_phase=None) if evolve else (w0, w0 * toas_rel + phase0_orb)
     omega_p, phase_p = evolve_phase(tp, p_phase) if evolve else (w0, w0 * tp + phase0_orb)
 
